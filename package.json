@@ -1,0 +1,22 @@
+{
+  "name": "subforge",
+  "version": "0.1.6",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc && vite build",
+    "tauri": "tauri",
+    "check": "tsc --noEmit",
+    "test:ui": "node scripts/check-resources.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.1.0"
+  }
+}

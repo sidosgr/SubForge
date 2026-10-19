@@ -1,0 +1,34 @@
+node_modules/
+dist/
+.tools/
+src-tauri/target/
+artifacts/
+src-tauri/resources/bin/
+*.part
+*.log
+
+# Personal media, subtitle outputs and troubleshooting data
+*.mkv
+*.mp4
+*.avi
+*.mov
+*.webm
+*.wav
+*.mp3
+*.flac
+*.srt
+*.vtt
+*.ass
+*.ssa
+!src-tauri/tests/fixtures/*.srt
+*.jsonl
+
+# Credentials and machine-generated configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+src-tauri/gen/
