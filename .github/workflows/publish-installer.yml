@@ -1,0 +1,52 @@
+name: Publish verified SubForge installer
+on:
+  push:
+    branches: [codex/publish-installer-0-1-6]
+    paths: [release-upload/ready.json]
+permissions:
+  contents: write
+concurrency:
+  group: publish-subforge-0-1-6
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Fetch staged installer and verify checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin https://github.com/sidosgr/SubForge.git
+          git fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout --detach FETCH_HEAD
+          python3 release-upload/assemble.py
+          cd release-upload/output
+          sha256sum --check SHA256SUMS.txt
+      - name: Create release and verify uploaded installer
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: sidosgr/SubForge
+        run: |
+          set -euo pipefail
+          gh release create v0.1.6 --draft --target 1546d4c48b1d2b3cbac2b75563156cf496b4e5df --title "SubForge 0.1.6" --notes-file release-upload/notes.md
+          gh release upload v0.1.6 release-upload/output/SubForge-Setup-x64.exe release-upload/output/SHA256SUMS.txt
+          mkdir release-upload/downloaded
+          gh release download v0.1.6 --dir release-upload/downloaded
+          cd release-upload/downloaded
+          sha256sum --check SHA256SUMS.txt
+          test "$(sha256sum SubForge-Setup-x64.exe | cut -d' ' -f1)" = "571d7ad82dc97bb00bbec2af1b3ca76a3b550042410dfef27045daa1b56884f1"
+          gh release edit v0.1.6 --draft=false --latest
+      - name: Remove temporary upload branch after publication
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: sidosgr/SubForge
+        run: |
+          set -euo pipefail
+          current="$(gh api repos/sidosgr/SubForge/git/ref/heads/codex/publish-installer-0-1-6 --jq .object.sha)"
+          if [ "$current" = "$GITHUB_SHA" ]; then
+            gh api --method DELETE repos/sidosgr/SubForge/git/refs/heads/codex/publish-installer-0-1-6
+          fi
