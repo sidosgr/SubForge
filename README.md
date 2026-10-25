@@ -15,8 +15,8 @@ Greek is the default subtitle language; ten languages are supported.
 παρασκήνιο. Προεπιλογή είναι τα ελληνικά, με υποστήριξη δέκα γλωσσών.
 
 This public repository contains the application source, build scripts and offline
-guides. A public prebuilt installer is pending complete corresponding-source
-packaging for the bundled GPL media dependencies. See [release status](RELEASE.md).
+guides. Windows installers are listed on [GitHub Releases](https://github.com/sidosgr/SubForge/releases).
+See [release status](RELEASE.md) for validation and packaging limitations.
 
 Windows 10/11 x64 desktop app. Rust handles media, jobs, local recognition,
 provider requests, credentials and Explorer integration; Tauri hosts the small
@@ -47,7 +47,29 @@ model, request attempts, cooldown and elapsed time. A small microphone animation
 accompanies transcription and a Rosetta Stone accompanies translation. Animations
 follow Windows' reduced-motion preference.
 
-Each file has a **File log** button and an **Export log** action. Append-only JSONL
+Settings → Processing includes **Translation parts per file**, default 1 with
+options up to 4. Healthy requests have no scheduled pauses, including when using
+older settings profiles. Providers share request slots across files. HTTP 429
+and recognized agent rate-limit errors immediately try another eligible enabled
+provider. If every route is limited, retries use short adaptive backoffs starting
+at one second, while honoring server-requested retry times. Learned spacing is
+250–2000 ms and clears as successful requests recover.
+
+Saving settings shows a persistent confirmation near the Save button. Setting
+and provider info icons explain each option on hover or keyboard focus (English
+and Greek, with English fallback for other interface languages). Translation
+responses and cached parts are checked for foreign-script characters and icons;
+invalid text is retried and cannot be written to the final subtitle.
+
+Each active part shows its cue range, provider/model, attempt, response age and
+timeout or pause countdown. Overall completion remains visible while requests
+wait. Parts keep independent validated checkpoints and are assembled in source
+order even when replies arrive out of order. After a failure, already active
+parts finish and save their results before the file stops; no new parts start.
+
+Each file has a **File log** button and an **Export log** action. The viewer
+updates automatically while open. Per-request elapsed times, scheduled pacing,
+actual limits and provider fallbacks are recorded. Append-only JSONL
 logs in the application data folder's `logs` directory retain timestamps, app
 version, per-file attempts, stages, media information, selected routes/models,
 cache reuse, timing repairs, retries, cooldowns and failures. Logs exclude request
@@ -78,9 +100,37 @@ Speech: Groq, Cloudflare Workers AI, Gemini, Deepgram, Speechmatics and custom
 compatible multipart endpoints. Microsoft Azure Speech and Google Translate are absent.
 Only Whisper Base/Small local transcription models are supported.
 
-Translation: OpenCode Zen through the managed CLI, OpenRouter, OpenCode CLI, Antigravity CLI, Pi and
+Translation: OpenAI (ChatGPT OAuth), OpenCode Zen through the managed CLI, OpenRouter, OpenCode CLI, Antigravity CLI, Pi and
 custom chat-completions/Responses/Gemini endpoints. Select models explicitly;
 configure credentials, retries, timeout and cooldown per route.
+
+OpenAI (ChatGPT) uses OpenAI’s documented [Sign in with ChatGPT flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
+In Settings → Translation, edit OpenAI (ChatGPT), choose **Continue with ChatGPT**,
+and authorize plan usage in your browser. Existing profiles can add it with
+**Add provider**. Refresh models, choose an account model, test the connection, save
+and enable the route. Each OpenAI provider keeps its own account/workspace
+registration; add another provider to retain a second account. No API key or agent
+installation is required. This route translates text; it does not transcribe audio.
+
+Eligible ChatGPT plan usage and any credits allowed in ChatGPT settings apply.
+The provider displays **Using ChatGPT plan**, with **Manage usage**, reconnect and
+sign-out controls. OAuth tokens stay in an app-owned file encrypted with Windows
+DPAPI for this Windows account and machine. They are refreshed automatically and
+excluded from settings exports, the webview and logs. Sign-out attempts remote
+revocation and removes local tokens while retaining the account registration.
+
+In Settings → **App updates**, choose **Check for updates**. The app checks the latest
+published stable release in sidosgr/SubForge on GitHub and displays release notes.
+**Download and install** saves settings, downloads the Windows installer, verifies
+its exact size and SHA-256 against GitHub’s asset metadata, and opens the update
+installer. Installation requires idle subtitle workers and model downloads;
+SubForge closes and restarts after installation. The install location and profile
+are preserved. Failed checks can be retried; releases without a verifiable installer
+cannot be installed from this panel. Development builds cannot launch installers.
+
+For future releases, publish a stable semantic-version tag such as v0.1.7 and
+upload the build output as exactly `SubForge-Setup-x64.exe`. GitHub must expose its
+SHA-256 asset digest. No separate update manifest or API token is required.
 
 SubForge automatically downloads and verifies its own official agent runtimes
 when Set up agent, Refresh models or Test connection is used, or an agent job
@@ -145,6 +195,8 @@ The single installer includes Microsoft's offline WebView2 installer and media
 tools. Whisper model downloads are optional, pinned and SHA-256 verified.
 Local recognition uses four CPU threads with one local model worker at a time.
 The file queue supports one to eight parallel files, defaulting to one.
+Translation can additionally overlap one to four parts within each file; local
+speech recognition retains its single worker.
 
 ## Verification and release limits
 

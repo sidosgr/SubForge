@@ -15,7 +15,7 @@ if (-not $SkipTests) {
   cargo test --manifest-path src-tauri/Cargo.toml --locked
   if ($LASTEXITCODE) { throw 'Rust tests failed' }
 }
-npm run tauri -- build
+node node_modules/@tauri-apps/cli/tauri.js build
 if ($LASTEXITCODE) { throw 'Installer build failed' }
 New-Item -ItemType Directory -Force artifacts | Out-Null
 $taskVersion = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version

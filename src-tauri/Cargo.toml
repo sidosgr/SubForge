@@ -1,6 +1,6 @@
 [package]
 name = "subforge"
-version = "0.1.6"
+version = "0.1.11"
 edition = "2021"
 authors = ["Sidos <info@sidos.gr>"]
 description = "Subtitles forged from your videos"
@@ -26,12 +26,16 @@ hex = "0.4"
 uuid = { version = "1", features = ["v4"] }
 regex = "1"
 encoding_rs = "0.8"
+whatlang = "0.18"
 base64 = "0.22"
 keyring = { version = "3.6", features = ["windows-native"] }
 winreg = "0.55"
 futures-util = "0.3"
 zip = { version = "6", default-features = false, features = ["deflate"] }
 portable-pty = "0.9"
+jsonwebtoken = "9.3"
+semver = "1"
+windows-sys = { version = "0.61", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }
 
 [profile.release]
 lto = "thin"

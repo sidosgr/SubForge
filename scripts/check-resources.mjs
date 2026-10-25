@@ -17,3 +17,16 @@ const statusRecords=[...statusSource.matchAll(/(?:^|\n)(?:'([^']+)'|([a-z]{2})):
 if(statusRecords.length!==10)throw new Error('Missing processing status language');
 for(const[,quoted,plain,pack]of statusRecords){const values=pack.split('|');if(values.length!==statusKeys.length||values.some(v=>!v.trim()))throw new Error(`Incomplete status translation: ${quoted??plain}`);const en=statusRecords.find(r=>r[2]==='en')[3].split('|');for(let i=0;i<values.length;i++){const tokens=v=>[...v.matchAll(/\{(\w+)\}/g)].map(m=>m[1]).sort().join(',');if(tokens(values[i])!==tokens(en[i]))throw new Error(`Status placeholders differ: ${quoted??plain} / ${statusKeys[i]}`);}}
 console.log(`${statusKeys.length} processing/log labels × 10 languages verified.`);
+const featureSource=fs.readFileSync('src/features-locales.ts','utf8');
+const featureKeys=featureSource.match(/const keys=\[([^\]]+)\]/)[1].match(/'[^']*'/g);
+const featureRecords=[...featureSource.matchAll(/(?:^|\n)(?:'([^']+)'|([a-z]{2})):`([^`]+)`\.split\('\|'\)/g)];
+if(featureRecords.length!==10)throw new Error('Missing OpenAI/update language');
+for(const[,quoted,plain,pack]of featureRecords){const values=pack.split('|');if(values.length!==featureKeys.length||values.some(v=>!v.trim()))throw new Error(`Incomplete OpenAI/update translation: ${quoted??plain}`);}
+console.log(`${featureKeys.length} OpenAI/update labels × 10 languages verified.`);
+const processingSource=fs.readFileSync('src/processing-locales.ts','utf8');
+const processingKeys=processingSource.match(/const keys=\[([^\]]+)\]/)[1].match(/'[^']*'/g);
+const processingRecords=[...processingSource.matchAll(/(?:^|\n)(?:'([^']+)'|([a-z]{2})):`([^`]+)`\.split\('\|'\)/g)];
+if(processingRecords.length!==10)throw new Error('Missing parallel processing language');
+const processingEnglish=processingRecords.find(r=>r[2]==='en')[3].split('|');
+for(const[,quoted,plain,pack]of processingRecords){const values=pack.split('|');if(values.length!==processingKeys.length||values.some(v=>!v.trim()))throw new Error(`Incomplete parallel processing translation: ${quoted??plain}`);for(let i=0;i<values.length;i++){const tokens=v=>[...v.matchAll(/\{(\w+)\}/g)].map(m=>m[1]).sort().join(',');if(tokens(values[i])!==tokens(processingEnglish[i]))throw new Error(`Parallel processing placeholders differ: ${quoted??plain} / ${processingKeys[i]}`);}}
+console.log(`${processingKeys.length} pacing/parallel labels × 10 languages verified.`);

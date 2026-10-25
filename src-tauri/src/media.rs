@@ -111,7 +111,7 @@ fn process_error(output: &[u8], error: &[u8]) -> String {
                     .ok()
                     .and_then(|r| r.captures(message).map(|c| c[1].to_string()))
                 {
-                    return format!("http_{code}:60");
+                    return format!("http_{code}:0");
                 }
                 return format!(
                     "cli_failed: {}",
@@ -132,7 +132,7 @@ fn process_error(output: &[u8], error: &[u8]) -> String {
                     .unwrap_or("cli_failed");
                 let message: String = message.chars().take(300).collect();
                 if let Some(code) = data["statusCode"].as_u64() {
-                    return format!("http_{code}:60: {message}");
+                    return format!("http_{code}:0: {message}");
                 }
                 return format!("cli_failed: {message}");
             }
@@ -145,7 +145,7 @@ fn process_error(output: &[u8], error: &[u8]) -> String {
     };
     if let Ok(pattern) = regex::Regex::new(r"(?:^|\s)(401|403|429|500|502|503|504):") {
         if let Some(code) = pattern.captures(diagnostic) {
-            return format!("http_{}:60", &code[1]);
+            return format!("http_{}:0", &code[1]);
         }
     }
     format!(
@@ -644,7 +644,7 @@ mod tests {
     fn cli_error_reports_status_without_headers_or_response_body() {
         let payload=serde_json::json!({"type":"error","error":{"data":{"statusCode":403,"message":"Free tier requires sign-in","responseHeaders":{"secret":"hidden-key"},"responseBody":"private body"}}}).to_string();
         let error = process_error(payload.as_bytes(), b"");
-        assert!(error.starts_with("http_403:60:"));
+        assert!(error.starts_with("http_403:0:"));
         assert!(!error.contains("hidden-key"));
         assert!(!error.contains("private body"));
     }

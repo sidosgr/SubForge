@@ -1,10 +1,12 @@
 use crate::{
     media,
+    pacing::Rate,
     providers::{self, Reply, Task},
     subtitles,
     types::*,
 };
 use anyhow::{bail, ensure, Result};
+use futures_util::{stream::FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -50,9 +52,6 @@ impl Control {
         Ok(())
     }
 }
-pub struct Rate {
-    pub next: tokio::time::Instant,
-}
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ModelStatus {
     pub id: String,
@@ -80,11 +79,14 @@ pub struct Engine {
     pub jobs: Mutex<Vec<Job>>,
     pub controls: Mutex<HashMap<String, Arc<Control>>>,
     pub active: Mutex<std::collections::HashSet<String>>,
-    pub rates: Mutex<HashMap<String, Arc<tokio::sync::Mutex<Rate>>>>,
+    pub rates: Mutex<HashMap<String, Arc<Mutex<Rate>>>>,
     pub local_lock: tokio::sync::Mutex<()>,
     pub running: AtomicBool,
     pub downloads: Mutex<HashMap<String, ModelStatus>>,
     pub logins: Mutex<HashMap<String, crate::agents::Login>>,
+    pub openai: crate::openai_oauth::AuthState,
+    pub updater: crate::updates::Updater,
+    pub maintenance: AtomicBool,
     save_lock: Mutex<()>,
     log_lock: Mutex<()>,
 }
@@ -141,9 +143,10 @@ fn cached_transcript(path: &Path, duration: f64, empty_ok: bool) -> Option<Trans
         None
     }
 }
-fn valid_translation_checkpoint(cues: &[Cue], source: &[Cue]) -> bool {
+fn valid_translation_checkpoint(cues: &[Cue], source: &[Cue], target: &str) -> bool {
     cues.len() == source.len()
         && subtitles::validate(cues, 0.).is_ok()
+        && subtitles::validate_language(cues, target).is_ok()
         && cues
             .iter()
             .zip(source)
@@ -202,6 +205,9 @@ impl Engine {
             running: AtomicBool::new(false),
             downloads: Mutex::new(HashMap::new()),
             logins: Mutex::new(HashMap::new()),
+            openai: crate::openai_oauth::AuthState::default(),
+            updater: crate::updates::Updater::default(),
+            maintenance: AtomicBool::new(false),
             save_lock: Mutex::new(()),
             log_lock: Mutex::new(()),
         });
@@ -396,6 +402,55 @@ impl Engine {
         self.event(id, key, args);
         self.emit();
     }
+    pub fn request_note(
+        &self,
+        id: &str,
+        part: Option<usize>,
+        key: &str,
+        mut args: serde_json::Value,
+    ) {
+        let Some(part) = part else {
+            self.note(id, key, args);
+            return;
+        };
+        if let Some(j) = self.jobs.lock().unwrap().iter_mut().find(|j| j.id == id) {
+            let total = j.translation_progress.total;
+            if let Some(batch) = j
+                .translation_progress
+                .active
+                .iter_mut()
+                .find(|b| b.part == part)
+            {
+                if let Some(map) = args.as_object_mut() {
+                    for (key, value) in [
+                        ("part", serde_json::json!(part)),
+                        ("total", serde_json::json!(total)),
+                        ("cues", serde_json::json!(batch.cues)),
+                        ("first", serde_json::json!(batch.first)),
+                        ("last", serde_json::json!(batch.last)),
+                    ] {
+                        map.entry(key).or_insert(value);
+                    }
+                }
+                batch.key = key.into();
+                batch.args = args.clone();
+                if let Some(provider) = args["provider"].as_str() {
+                    batch.provider = provider.into();
+                }
+                if let Some(model) = args["model"].as_str() {
+                    batch.model = model.into();
+                }
+                batch.request_started = if key == "provider_attempt" {
+                    now_seconds()
+                } else {
+                    0.
+                };
+            }
+        }
+        args["part"] = serde_json::json!(part);
+        self.event(id, key, args);
+        self.emit();
+    }
     pub fn job_log(&self, id: &str) -> Result<String> {
         let _guard = self.log_lock.lock().unwrap();
         let path = log_path(&self.dir, id)?;
@@ -431,16 +486,12 @@ impl Engine {
             .filter_map(|id| providers::key(&id).ok())
             .collect()
     }
-    pub fn gate(&self, id: &str) -> Arc<tokio::sync::Mutex<Rate>> {
+    pub fn gate(&self, id: &str) -> Arc<Mutex<Rate>> {
         self.rates
             .lock()
             .unwrap()
             .entry(id.into())
-            .or_insert_with(|| {
-                Arc::new(tokio::sync::Mutex::new(Rate {
-                    next: tokio::time::Instant::now(),
-                }))
-            })
+            .or_insert_with(|| Arc::new(Mutex::new(Rate::default())))
             .clone()
     }
     pub fn add(&self, paths: Vec<String>) -> Result<usize> {
@@ -523,6 +574,7 @@ impl Engine {
                     job.message.clear();
                     job.provider.clear();
                     job.progress = None;
+                    job.translation_progress = TranslationProgress::default();
                     job.activity = serde_json::json!({"key":"retry_queued","args":{}});
                 }
                 self.running.store(true, Ordering::SeqCst);
@@ -558,7 +610,13 @@ impl Engine {
                         .cloned()
                         .collect();
                     for job in pending {
-                        engine.active.lock().unwrap().insert(job.id.clone());
+                        {
+                            let mut active = engine.active.lock().unwrap();
+                            if engine.maintenance.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            active.insert(job.id.clone());
+                        }
                         if let Some(j) = engine
                             .jobs
                             .lock()
@@ -634,6 +692,117 @@ impl Engine {
                 tokio::time::sleep(Duration::from_millis(400)).await;
             }
         });
+    }
+    async fn translate_batch(
+        self: &Arc<Self>,
+        job: &Job,
+        original: &[Cue],
+        source: &str,
+        index: usize,
+        range: std::ops::Range<usize>,
+        checkpoint: PathBuf,
+        control: &Control,
+    ) -> Result<(usize, Vec<Cue>)> {
+        control.checkpoint().await?;
+        let batch = &original[range.clone()];
+        let started = now_seconds();
+        if let Some(j) = self
+            .jobs
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|j| j.id == job.id)
+        {
+            j.translation_progress.active.push(BatchProgress {
+                part:index+1,cues:batch.len(),first:batch[0].id,last:batch.last().unwrap().id,
+                key:"translation_part".into(),args:serde_json::json!({"part":index+1,"total":j.translation_progress.total,"cues":batch.len()}),
+                provider:String::new(),model:String::new(),request_started:0.,
+            });
+        }
+        self.request_note(
+            &job.id,
+            Some(index + 1),
+            "translation_part",
+            serde_json::json!({}),
+        );
+        let result: Result<Vec<Cue>> = async {
+            let cached = fs::read(&checkpoint)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<Vec<Cue>>(&b).ok())
+                .filter(|c| valid_translation_checkpoint(c, batch, &job.config.target_language));
+            let result = if let Some(cues) = cached {
+                self.event(
+                    &job.id,
+                    "translation_reused",
+                    serde_json::json!({"part":index+1,"cues":cues.len()}),
+                );
+                cues
+            } else {
+                if checkpoint.exists() {
+                    self.event(
+                        &job.id,
+                        "cache_rebuilt",
+                        serde_json::json!({"checkpoint":format!("translation-{index}")}),
+                    );
+                }
+                match providers::route(
+                    self,
+                    &job.id,
+                    &job.config,
+                    &job.config.translation,
+                    Task::Translate {
+                        part: index + 1,
+                        cues: batch.to_vec(),
+                        context: original[range.start.saturating_sub(4)..range.start].to_vec(),
+                        source: source.into(),
+                        target: job.config.target_language.clone(),
+                    },
+                    control,
+                )
+                .await?
+                {
+                    Reply::Translated(cues) => cues,
+                    _ => bail!("invalid_response"),
+                }
+            };
+            ensure!(
+                valid_translation_checkpoint(&result, batch, &job.config.target_language),
+                "invalid_checkpoint"
+            );
+            atomic(&checkpoint, &serde_json::to_vec(&result)?)?;
+            Ok(result)
+        }
+        .await;
+        let result = match result {
+            Ok(cues) => cues,
+            Err(error) => {
+                self.request_note(
+                    &job.id,
+                    Some(index + 1),
+                    "batch_failed",
+                    serde_json::json!({"error":self.redact(&error.to_string())}),
+                );
+                return Err(error);
+            }
+        };
+        if let Some(j) = self
+            .jobs
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|j| j.id == job.id)
+        {
+            let p = &mut j.translation_progress;
+            p.active.retain(|b| b.part != index + 1);
+            p.completed += 1;
+            p.cues_done += result.len();
+            j.progress = Some(p.completed as f64 / p.total.max(1) as f64);
+            j.activity = serde_json::json!({"key":"translation_summary","args":{"done":p.completed,"total":p.total,"cues":p.cues_done,"all_cues":p.total_cues,"active":p.active.len()}});
+        }
+        self.event(&job.id,"translation_saved",serde_json::json!({"part":index+1,"cues":result.len(),"elapsed_seconds":(now_seconds()-started).max(0.)}));
+        self.save();
+        self.emit();
+        Ok((index, result))
     }
     async fn process(self: &Arc<Self>, job: &Job, control: &Control) -> Result<String> {
         let settings = &job.config;
@@ -747,7 +916,9 @@ impl Engine {
                     "",
                     &format!("subtitle_source:{source}"),
                 );
-                if t.language == settings.target_language {
+                if t.language == settings.target_language
+                    && subtitles::validate_language(&t.cues, &settings.target_language).is_ok()
+                    && subtitles::canonical_file(Path::new(&source), &t.cues, &settings.output_format) {
                     return Ok(String::new());
                 }
                 t
@@ -905,99 +1076,97 @@ impl Engine {
         if !source_reused {
             atomic(&source_file, &serde_json::to_vec(&transcript)?)?;
         }
-        if transcript.language != settings.target_language {
+        if transcript.language != settings.target_language
+            || subtitles::validate_language(&transcript.cues, &settings.target_language).is_err() {
             let translation_key = hex::encode(Sha256::digest(serde_json::to_vec(
-                &serde_json::json!({"routes":settings.translation,"batch":settings.batch_size,"target":settings.target_language,"protocol":2}),
+                &serde_json::json!({"routes":settings.translation,"batch":settings.batch_size,"target":settings.target_language,"protocol":4}),
             )?));
             let original = transcript.cues.clone();
-            let mut translated = Vec::new();
             let batches = subtitles::translation_batches(&original, settings.batch_size);
             let count = batches.len();
-            for (i, range) in batches.into_iter().enumerate() {
-                let batch = &original[range.clone()];
-                control.checkpoint().await?;
-                let checkpoint = cache.join(format!("translated-{translation_key}-{i}.json"));
-                self.update(
-                    &job.id,
-                    "translating",
-                    Some(i as f64 / count as f64),
-                    "",
-                    "",
-                );
-                self.note(&job.id,"translation_part",serde_json::json!({"part":i+1,"total":count,"cues":batch.len(),"first":batch.first().map(|c|c.id),"last":batch.last().map(|c|c.id)}));
-                let cached: Option<Vec<Cue>> = fs::read(&checkpoint)
-                    .ok()
-                    .and_then(|b| serde_json::from_slice(&b).ok())
-                    .filter(|c: &Vec<Cue>| valid_translation_checkpoint(c, batch));
-                let result: Vec<Cue> = if let Some(c) = cached {
-                    self.event(
-                        &job.id,
-                        "translation_reused",
-                        serde_json::json!({"part":i+1,"cues":c.len()}),
-                    );
-                    c
-                } else {
-                    if checkpoint.exists() {
-                        self.event(
-                            &job.id,
-                            "cache_rebuilt",
-                            serde_json::json!({"checkpoint":format!("translation-{i}")}),
-                        );
-                    }
-                    let start = range.start;
-                    let context = original[start.saturating_sub(4)..start].to_vec();
-                    match providers::route(
-                        self,
-                        &job.id,
-                        settings,
-                        &settings.translation,
-                        Task::Translate {
-                            cues: batch.to_vec(),
-                            context,
-                            source: transcript.language.clone(),
-                            target: settings.target_language.clone(),
-                        },
-                        control,
-                    )
-                    .await?
-                    {
-                        Reply::Translated(c) => c,
-                        _ => bail!("invalid_response"),
-                    }
+            if let Some(j) = self
+                .jobs
+                .lock()
+                .unwrap()
+                .iter_mut()
+                .find(|j| j.id == job.id)
+            {
+                j.translation_progress = TranslationProgress {
+                    total: count,
+                    total_cues: original.len(),
+                    workers: settings.parallel_batches,
+                    ..Default::default()
                 };
-                ensure!(
-                    result.len() == batch.len()
-                        && result
-                            .iter()
-                            .zip(batch)
-                            .all(|(a, b)| a.id == b.id && a.start == b.start && a.end == b.end),
-                    "invalid_checkpoint"
-                );
-                atomic(&checkpoint, &serde_json::to_vec(&result)?)?;
-                self.event(
-                    &job.id,
-                    "translation_saved",
-                    serde_json::json!({"part":i+1,"cues":result.len()}),
-                );
-                translated.extend(result);
-                self.update(
-                    &job.id,
-                    "translating",
-                    Some((i + 1) as f64 / count as f64),
-                    "",
-                    "",
-                );
+                j.provider.clear();
             }
+            self.update(&job.id, "translating", Some(0.), "", "");
+            self.note(&job.id,"translation_started",serde_json::json!({"total":count,"workers":settings.parallel_batches,"interval":0,"cues":original.len()}));
+            let mut pending = batches.into_iter().enumerate();
+            let mut requests = FuturesUnordered::new();
+            let mut results: Vec<Option<Vec<Cue>>> = vec![None; count];
+            for _ in 0..settings.parallel_batches {
+                if let Some((i, range)) = pending.next() {
+                    requests.push(self.translate_batch(
+                        job,
+                        &original,
+                        &transcript.language,
+                        i,
+                        range,
+                        cache.join(format!("translated-{translation_key}-{i}.json")),
+                        control,
+                    ));
+                }
+            }
+            let mut failure = None;
+            while let Some(result) = requests.next().await {
+                match result {
+                    Ok((i, cues)) => results[i] = Some(cues),
+                    Err(error) => {
+                        if failure.is_none() {
+                            failure = Some(error);
+                        }
+                    }
+                }
+                // On failure, finish/checkpoint active work but do not start more.
+                // Cancellation reaches every active request through the shared control.
+                if failure.is_none() {
+                    if let Some((i, range)) = pending.next() {
+                        requests.push(self.translate_batch(
+                            job,
+                            &original,
+                            &transcript.language,
+                            i,
+                            range,
+                            cache.join(format!("translated-{translation_key}-{i}.json")),
+                            control,
+                        ));
+                    }
+                }
+            }
+            if let Some(error) = failure {
+                return Err(error);
+            }
+            let translated: Vec<Cue> = results
+                .into_iter()
+                .map(|r| r.ok_or_else(|| anyhow::anyhow!("missing_segments")))
+                .collect::<Result<Vec<_>>>()?
+                .into_iter()
+                .flatten()
+                .collect();
             transcript.cues = translated;
         }
         control.checkpoint().await?;
         self.update(&job.id, "validating", None, "", "");
+        for cue in &mut transcript.cues {
+            cue.text = subtitles::plain_text(&cue.text);
+        }
         self.note(
             &job.id,
             "checking_output",
             serde_json::json!({"cues":transcript.cues.len()}),
         );
         subtitles::validate(&transcript.cues, probe.duration)?;
+        subtitles::validate_language(&transcript.cues, &settings.target_language)?;
         let parent = if settings.output_directory.is_empty() {
             input.parent().unwrap().to_path_buf()
         } else {
@@ -1200,6 +1369,10 @@ pub async fn download(engine: Arc<Engine>, id: String) -> Result<()> {
     {
         let mut downloads = engine.downloads.lock().unwrap();
         ensure!(
+            !engine.maintenance.load(Ordering::SeqCst),
+            "update_in_progress"
+        );
+        ensure!(
             !downloads.get(&id).is_some_and(|s| s.downloading),
             "model_downloading"
         );
@@ -1265,13 +1438,14 @@ mod tests {
             end: 2.,
             text: "Synthetic".into(),
         }];
-        assert!(valid_translation_checkpoint(&c, &c));
+        assert!(valid_translation_checkpoint(&c, &c, "en"));
+        assert!(!valid_translation_checkpoint(&c, &c, "el"));
         let mut invalid = c.clone();
         invalid[0].text.clear();
-        assert!(!valid_translation_checkpoint(&invalid, &c));
+        assert!(!valid_translation_checkpoint(&invalid, &c, "en"));
         invalid = c.clone();
         invalid[0].end = 3.;
-        assert!(!valid_translation_checkpoint(&invalid, &c));
+        assert!(!valid_translation_checkpoint(&invalid, &c, "en"));
     }
     #[test]
     fn file_logs_append_attempts_and_cannot_escape_the_log_folder() {

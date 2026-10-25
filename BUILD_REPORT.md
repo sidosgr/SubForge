@@ -1,4 +1,167 @@
-# SubForge 0.1.6 — build and verification report
+### Version 0.1.11 — 25 October 2026
+
+Adds persistent save feedback and setting/provider explanations on hover or keyboard focus. Removes healthy-request delays, including the delays stored in legacy profiles, and uses short adaptive rate-limit backoffs with immediate fallback to another eligible enabled provider. Server Retry-After seconds remain authoritative. Strict per-cue character validation rejects foreign scripts and icons in new translations and cached results. Translation checkpoint protocol advances to 4.
+
+Validation before release packaging: 69 Rust tests passed, two interactive/live-account tests skipped, 16 browser scenarios and 9 isolated desktop checks passed. Frontend build and all ten language resource checks passed. Desktop fixtures verified concurrency, out-of-order replies, ordered IDs/timestamps, pause/cancel, checkpoint reuse, real HTTP 429/Retry-After fallback and live logs. These checks do not prove live provider quotas or universal language accuracy.
+
+The optimized production binary reports version 0.1.11 and publisher Sidos. An extracted packaged executable passed the isolated release smoke test: startup, zero default pause, setting-help hover, visible save confirmation, settings persistence and no webview errors. A new notice supplement covers eight dependencies added since the published 0.1.6 source; language-detection notices remain separate.
+
+The release workflow tests and builds the production NSIS installer, verifies its embedded executable, production identifier, bundled notices/source and SHA-256, then publishes the installer and checksum under v0.1.11. The same checks are available locally in scripts/verify-installer.mjs. Historical reports below describe earlier builds; the 15-second pacing described for 0.1.10 is superseded by 0.1.11.
+
+ SubForge — build and verification report
+
+## Version 0.1.10 — 21 October 2026
+
+Adds conservative translation pacing, verbose per-part progress and optional
+parallel translation within one file. Existing settings deserialize with a
+15-second minimum pause and one translation part at a time. Settings allow up to
+four parts per file. Provider slots and spacing are shared across files; normal
+spacing does not consume retries or appear as a rate-limit cooldown. HTTP 429
+responses retain the server retry delay, increase backoff/spacing and use an
+available fallback. Five successful requests ease learned spacing gradually.
+CLI subrequests, including smaller retries of malformed replies, are also paced.
+
+Parallel replies save independently validated checkpoints and are assembled in
+source order. On failure, active work finishes and checkpoints before the job
+stops, with no further parts scheduled. Cancellation reaches all active requests.
+Progress shows completed cues/parts plus each active part's provider/model,
+attempt, cue range, reply age/timeout and live pause countdown. The file-log
+viewer refreshes while open, with request durations, limits and fallback events.
+
+Validation completed:
+
+- 56 Rust tests passed, including default-profile compatibility, interval and
+  parallelism bounds, permit release, default serialization, shared account
+  identity, rate-limit backoff and gradual recovery.
+- 9 native desktop checks passed in an isolated application identifier and data
+  folder. Only synthetic video/subtitles, loopback HTTP and synthetic credentials
+  were used. Tests exercised actual concurrent requests/out-of-order replies,
+  pause/cancel, shared spacing, ordered IDs/timestamps, checkpoint reuse after
+  failure, 429/Retry-After fallback, live logs and all ten interface languages.
+- 15 browser UI scenarios passed, including numeric persistence of the parallel
+  selector and request pause, escaped per-part provider text, determinate overall
+  progress, countdowns without new events, and existing OAuth/update behavior.
+- Frontend compilation and resource checks passed. All ten offline guides include
+  the pacing/parallel settings. These tests do not measure live provider quotas.
+
+The native regression uses a one-second pause to keep the fixture run bounded;
+the production default is 15 seconds. The user's running app, data and accounts
+were not modified by the isolated tests. No live cloud requests were needed.
+
+Installer verified: 359,904,686 bytes.
+SHA-256: e00b2f9d3fcc4abb687353e10af6bfc50732c15aa308c53942a79db7d2b8c820.
+The extracted executable matches the release build and reports version 0.1.10
+and Sidos - info@sidos.gr. The normal production application identifier, versioned
+delivery copy and checksum were verified. Installation/restart was not exercised.
+
+## Version 0.1.9 — 21 October 2026
+
+Fixes `providers_failed: ... openai_stream_invalid` after successful ChatGPT
+OAuth sign-in. A live diagnostic returned HTTP 200 and valid SSE events but no
+Content-Type header. The previous header check rejected that response before
+reading it. The request now explicitly accepts event streams and the reader
+validates the actual response events. Successful completion and nonempty text
+remain mandatory. Interrupted streams use the provider's configured retries;
+plan-limit errors are not treated as transient failures.
+
+Validation completed:
+
+- 49 unattended Rust tests passed; two interactive/account tests are ignored by
+  default. HTTP regression tests cover both present and absent Content-Type,
+  Unicode, invalid HTML/JSON bodies, incomplete streams, failures and plan limits.
+- The live OAuth subtitle test was explicitly run and passed with the existing
+  saved account and selected model. It sent the synthetic subtitle "Hello."
+  through the public Responses endpoint, using the production subtitle prompt,
+  stream reader and result validator. The completed Greek translation preserved
+  the cue ID and timestamps. Content-Type was absent in this successful response.
+- The live test only read the existing encrypted access token in memory. It did
+  not renew credentials, modify the saved account, or print credential values.
+- The frontend production build and all ten language/resource checks passed.
+
+Reproduce the opt-in live check with: cargo test --manifest-path src-tauri/Cargo.toml
+--locked openai_oauth::tests::live_oauth_subtitle_translation -- --ignored --exact --nocapture
+
+The live test requires an enabled, saved OAuth provider and an unexpired access
+token. A full media job and installed-app upgrade/restart are not covered by it.
+
+Installer verified: 359,883,513 bytes.
+SHA-256: 6512524e82b4d5194f9e598bda5c5dcff359d9acb61b04ec99eb4f595aa1ceee.
+The extracted executable matches the release build and reports version 0.1.9
+and Sidos - info@sidos.gr. The versioned delivery copy and its checksum also match.
+
+## Version 0.1.8 — 21 October 2026
+
+Fixes OpenAI OAuth opening the Documents folder. OpenAI sign-in and provider
+web links now call the same Windows ShellExecuteW browser launcher used by
+Google sign-in. The launcher checks the Windows result instead of treating an
+Explorer process as proof that the browser opened. OAuth URLs are not logged.
+The existing callback, code exchange, identity checks and encrypted token
+storage remain in place.
+
+Validation for this fix:
+
+- 46 Rust tests passed; the browser-opening test is excluded from unattended runs.
+- The real default-browser test was then run explicitly and passed. It opened a
+  loopback page through Windows URL association and verified a complete OAuth-shaped
+  URL with a 5,000-character synthetic token hint, state, scopes and encoded punctuation.
+- Both HTTP and HTTPS are registered to the same default browser on this PC.
+- Frontend build and localization checks passed in all ten languages.
+
+Reproduce the native handoff check with: cargo test --manifest-path src-tauri/Cargo.toml
+--locked agents::tests::default_browser_receives_complete_oauth_shaped_url -- --ignored --exact
+
+No user credentials were entered and no real OAuth token was created in this test.
+Complete account sign-in and consent in the browser when using the provider.
+
+Installer verified: 359,876,833 bytes.
+SHA-256: 3038bb9ce2a66cb1ff3f1867fe1df43e1f85066867b5c7bc33cde8966db2c29c.
+The extracted executable matches the release build and reports version 0.1.8
+and Sidos - info@sidos.gr. The versioned delivery copy and its checksum also match.
+
+## Version 0.1.7 — 21 October 2026
+
+Added OpenAI (ChatGPT OAuth) translation and in-app GitHub release updates.
+The OAuth route uses PKCE, state and nonce checks, signed ID-token validation,
+account-bound client registrations, serialized refresh-token rotation and Windows
+DPAPI credential storage. Translation uses the public Responses endpoint with
+store=false and stream=true and accepts only completed streams. Each provider
+retains its own account registration. No API key or managed CLI is required.
+
+The update panel checks the latest stable sidosgr/SubForge release. Installation
+re-fetches release metadata, checks the reviewed version, validates asset URL,
+size and GitHub SHA-256, then re-reads the locked installer before launch.
+The scheduling gate prevents new jobs from starting during installation. The
+NSIS update keeps the install location and profile and requests a restart.
+
+Validation completed for this change:
+
+- 45 Rust tests passed, including callback/state/PKCE checks, DPAPI round-trip,
+  scope/catalog checks, interrupted/error/completed streams, fragmented Unicode
+  SSE, semantic-version comparison and tampered/truncated download rejection.
+- 13 mocked browser scenarios passed, including sign-in cancellation/retry,
+  account/first-sign-in UI, model discovery, sign-out, additional providers,
+  update states, escaped release notes, settings persistence and ten languages.
+- Six native desktop checks passed against an isolated data directory. The live
+  GitHub v0.1.6 release and installer digest were recognized correctly; no
+  downgrade/install action was offered by version 0.1.7.
+- TypeScript/Vite build and 32 new interface labels in all ten languages passed.
+  All ten offline guides include OpenAI and update instructions.
+
+Live OpenAI account authorization/inference and an actual installed-app
+upgrade/restart were not exercised. The tests did not upload user media or
+subtitle dialogue. The installer remains unsigned. No commit, push or GitHub
+release was published for this change.
+
+
+Final 0.1.7 installer: **359,860,899 bytes** (343.19 MiB).
+SHA-256: e92ef3f5636f8cb778f62b11e69476207107315e0841f3eff8a626719b4330a9.
+The extracted installer executable matches the tested release executable, and
+the delivery checksum matches the build output. Windows metadata reports version
+0.1.7 and Sidos - info@sidos.gr. Five additional release-build desktop checks
+passed, including the live GitHub check; the bundled interface and missing-model
+setup message were also verified.
+
+## Previous version: SubForge 0.1.6
 
 Date: 14 October 2026
 Credit: **Sidos - info@sidos.gr**

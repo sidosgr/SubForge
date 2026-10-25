@@ -2,9 +2,12 @@
 mod agents;
 mod engine;
 mod media;
+mod openai_oauth;
+mod pacing;
 mod providers;
 mod subtitles;
 mod types;
+mod updates;
 use engine::Engine;
 use std::{
     path::PathBuf,
@@ -155,6 +158,7 @@ async fn test_provider(
         &settings,
         &settings.translation,
         providers::Task::Translate {
+            part: 1,
             cues: vec![types::Cue {
                 id: 1,
                 start: 0.,
@@ -230,15 +234,12 @@ fn open_provider_setup(url: String) -> CmdResult<()> {
         "https://aistudio.google.com/",
         "https://console.deepgram.com/",
         "https://portal.speechmatics.com/",
+        "https://chatgpt.com/settings/usage",
     ];
     if !allowed.iter().any(|p| url.starts_with(p)) {
         return Err("setup_url_invalid".into());
     }
-    std::process::Command::new("explorer.exe")
-        .arg(url)
-        .spawn()
-        .map_err(error)?;
-    Ok(())
+    agents::open_browser(&url).map_err(error)
 }
 
 #[tauri::command]
@@ -259,6 +260,41 @@ async fn agent_signin(state: State<'_, AppState>, provider: Provider) -> CmdResu
 #[tauri::command]
 fn agent_signin_action(state: State<AppState>, id: String, action: String) -> CmdResult<String> {
     agents::login_action(&state, &id, &action).map_err(error)
+}
+
+#[tauri::command]
+async fn openai_signin(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    openai_oauth::start(state.inner().clone(), id)
+        .await
+        .map_err(error)
+}
+#[tauri::command]
+async fn openai_status(state: State<'_, AppState>, id: String) -> CmdResult<openai_oauth::Status> {
+    openai_oauth::status(&state, &id).await.map_err(error)
+}
+#[tauri::command]
+fn openai_cancel(state: State<AppState>, id: String) {
+    openai_oauth::cancel(&state, &id);
+}
+#[tauri::command]
+async fn openai_signout(state: State<'_, AppState>, id: String) -> CmdResult<bool> {
+    openai_oauth::signout(&state, &id).await.map_err(error)
+}
+#[tauri::command]
+async fn openai_acknowledge(state: State<'_, AppState>, id: String) -> CmdResult<()> {
+    openai_oauth::acknowledge(&state, &id).await.map_err(error)
+}
+#[tauri::command]
+async fn check_updates() -> CmdResult<updates::Available> {
+    updates::check().await.map_err(error)
+}
+#[tauri::command]
+fn update_status(state: State<AppState>) -> updates::Progress {
+    updates::status(&state)
+}
+#[tauri::command]
+async fn install_update(state: State<'_, AppState>, version: String) -> CmdResult<()> {
+    updates::install(&state, &version).await.map_err(error)
 }
 
 fn shell(enabled: bool, language: &str) -> anyhow::Result<()> {
@@ -380,6 +416,7 @@ fn main() {
             if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.logins.lock().unwrap().clear();
+                    openai_oauth::cancel_all(&state);
                 }
             }
         })
@@ -422,7 +459,15 @@ fn main() {
             open_provider_setup,
             prepare_agent,
             agent_signin,
-            agent_signin_action
+            agent_signin_action,
+            openai_signin,
+            openai_status,
+            openai_cancel,
+            openai_signout,
+            openai_acknowledge,
+            check_updates,
+            update_status,
+            install_update
         ])
         .run(tauri::generate_context!())
         .expect("SubForge could not start");

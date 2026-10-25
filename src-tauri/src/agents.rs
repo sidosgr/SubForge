@@ -267,7 +267,9 @@ fn open_signin_browser(url: &str) -> Result<()> {
     );
     open_browser(url)
 }
-fn open_browser(url: &str) -> Result<()> {
+pub(crate) fn open_browser(url: &str) -> Result<()> {
+    let parsed = reqwest::Url::parse(url).map_err(|_| anyhow::anyhow!("signin_url_invalid"))?;
+    ensure!(matches!(parsed.scheme(), "https" | "http") && !url.contains('\0'), "signin_url_invalid");
     #[cfg(windows)]
     {
         use std::os::windows::ffi::OsStrExt;
@@ -558,6 +560,53 @@ fn native_signed_in(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn browser_rejects_non_web_targets_and_embedded_nul() {
+        for url in ["file:///C:/Users", "javascript:alert(1)", "https://example.com/\0ignored"] {
+            assert!(open_browser(url).is_err());
+        }
+    }
+    #[test]
+    #[ignore = "opens the actual Windows default browser to a local test page"]
+    fn default_browser_receives_complete_oauth_shaped_url() {
+        use std::{net::TcpListener, time::{Duration, Instant}};
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let base = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let state = uuid::Uuid::new_v4().to_string();
+        let hint = format!("synthetic-{}", "x".repeat(5000));
+        let mut url = reqwest::Url::parse(&format!("{base}/auth/callback")).unwrap();
+        url.query_pairs_mut().extend_pairs([
+            ("state", state.as_str()), ("client_id", "synthetic-client"),
+            ("scope", "openid profile email"), ("code", "synthetic&code+with=punctuation"),
+            ("id_token_hint", hint.as_str()),
+        ]);
+        open_browser(url.as_str()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut socket = loop {
+            match listener.accept() {
+                Ok((socket, _)) => break socket,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => std::thread::sleep(Duration::from_millis(50)),
+                Err(e) => panic!("default browser did not navigate to the callback: {e}"),
+            }
+        };
+        socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+        let mut bytes = Vec::new();
+        while bytes.len() < 16384 && !bytes.windows(4).any(|w| w == b"\r\n\r\n") {
+            let mut buffer = [0u8; 1024]; let count = socket.read(&mut buffer).unwrap();
+            if count == 0 { break; } bytes.extend_from_slice(&buffer[..count]);
+        }
+        let body = "SubForge browser test passed. You can close this tab.";
+        write!(socket, "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).unwrap();
+        let request = std::str::from_utf8(&bytes).unwrap();
+        let target = request.lines().next().unwrap().strip_prefix("GET ").unwrap().strip_suffix(" HTTP/1.1").unwrap();
+        let returned = reqwest::Url::parse(&format!("{base}{target}")).unwrap();
+        assert_eq!(returned.path(), "/auth/callback");
+        let pairs: std::collections::HashMap<_, _> = returned.query_pairs().collect();
+        assert_eq!(pairs["state"], state); assert_eq!(pairs["client_id"], "synthetic-client");
+        assert_eq!(pairs["scope"], "openid profile email");
+        assert_eq!(pairs["code"], "synthetic&code+with=punctuation"); assert_eq!(pairs["id_token_hint"], hint);
+    }
     #[test]
     fn hidden_terminal_answers_split_cursor_queries() {
         let mut pending = Vec::new();

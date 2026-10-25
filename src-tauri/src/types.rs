@@ -1,5 +1,27 @@
 use serde::{Deserialize, Serialize};
 
+#[cfg(test)]
+mod pacing_settings_tests {
+    use super::*;
+    #[test]
+    fn existing_profiles_default_to_no_pauses_and_bounded_parallelism() {
+        let mut settings: Settings =
+            serde_json::from_value(serde_json::json!({"parallel_files":2,"batch_size":80}))
+                .unwrap();
+        assert_eq!(settings.request_interval_secs, 0);
+        assert_eq!(settings.parallel_batches, 1);
+        settings.validate().unwrap();
+        settings.parallel_batches = 4;
+        settings.request_interval_secs = 300;
+        settings.validate().unwrap();
+        settings.parallel_batches = 5;
+        assert!(settings.validate().is_err());
+        settings.parallel_batches = 1;
+        settings.request_interval_secs = 0;
+        settings.validate().unwrap();
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Provider {
@@ -30,7 +52,7 @@ impl Default for Provider {
             cost: "unknown".into(),
             credit_enabled: false,
             retries: 2,
-            delay_ms: 2000,
+            delay_ms: 0,
             timeout_secs: 180,
             account_id: String::new(),
             cli_path: String::new(),
@@ -60,6 +82,8 @@ pub struct Settings {
     pub local_model: String,
     pub cloud_fallback: bool,
     pub parallel_files: usize,
+    pub parallel_batches: usize,
+    pub request_interval_secs: u64,
     pub allow_paid: bool,
     pub recursive: bool,
     pub output_directory: String,
@@ -88,6 +112,8 @@ impl Default for Settings {
             local_model: "base".into(),
             cloud_fallback: false,
             parallel_files: 1,
+            parallel_batches: 1,
+            request_interval_secs: 0,
             allow_paid: false,
             recursive: false,
             output_directory: String::new(),
@@ -140,6 +166,10 @@ impl Default for Settings {
                 ),
             ],
             translation: vec![
+                Provider {
+                    auth: "oauth".into(),
+                    ..route("openai_oauth", "OpenAI (ChatGPT)", "", "", "plan")
+                },
                 route("zen", "OpenCode Zen (CLI)", "", "", "unknown"),
                 route(
                     "openrouter",
@@ -167,6 +197,14 @@ impl Default for Settings {
 impl Settings {
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!((1..=8).contains(&self.parallel_files), "parallel_limit");
+        anyhow::ensure!(
+            (1..=4).contains(&self.parallel_batches),
+            "batch_parallel_limit"
+        );
+        anyhow::ensure!(
+            self.request_interval_secs <= 300,
+            "request_interval_limit"
+        );
         anyhow::ensure!(
             matches!(self.local_model.as_str(), "base" | "small"),
             "invalid_model"
@@ -210,7 +248,8 @@ impl Settings {
         for p in self.speech.iter().chain(&self.translation) {
             anyhow::ensure!(
                 !p.id.trim().is_empty()
-                    && matches!(p.cost.as_str(), "free" | "credit" | "paid" | "unknown"),
+                    && (matches!(p.cost.as_str(), "free" | "credit" | "paid" | "unknown")
+                        || (p.kind == "openai_oauth" && p.cost == "plan")),
                 "invalid_provider"
             );
             anyhow::ensure!(ids.insert(&p.id), "duplicate_provider");
@@ -248,10 +287,17 @@ impl Settings {
             );
         }
         for p in &self.translation {
+            if p.kind == "openai_oauth" {
+                anyhow::ensure!(
+                    p.auth == "oauth" && p.cost == "plan",
+                    "invalid_openai_provider"
+                );
+            }
             anyhow::ensure!(
                 matches!(
                     p.kind.as_str(),
                     "zen"
+                        | "openai_oauth"
                         | "openrouter"
                         | "opencode"
                         | "antigravity"
@@ -286,7 +332,11 @@ pub fn language_name(code: &str) -> &str {
         .unwrap_or(code)
 }
 pub fn eligible(p: &Provider, s: &Settings) -> bool {
-    p.enabled && (p.cost == "free" || (p.cost == "credit" && p.credit_enabled) || s.allow_paid)
+    p.enabled
+        && (p.cost == "free"
+            || (p.kind == "openai_oauth" && p.cost == "plan")
+            || (p.cost == "credit" && p.credit_enabled)
+            || s.allow_paid)
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Cue {
@@ -319,6 +369,8 @@ pub struct Job {
     pub started_at: f64,
     #[serde(default)]
     pub activity: serde_json::Value,
+    #[serde(default)]
+    pub translation_progress: TranslationProgress,
 }
 impl Job {
     pub fn new(path: String, config: Settings) -> Self {
@@ -337,6 +389,28 @@ impl Job {
             attempt: 0,
             started_at: 0.0,
             activity: serde_json::Value::Null,
+            translation_progress: TranslationProgress::default(),
         }
     }
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TranslationProgress {
+    pub total: usize,
+    pub completed: usize,
+    pub cues_done: usize,
+    pub total_cues: usize,
+    pub workers: usize,
+    pub active: Vec<BatchProgress>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchProgress {
+    pub part: usize,
+    pub cues: usize,
+    pub first: u32,
+    pub last: u32,
+    pub key: String,
+    pub args: serde_json::Value,
+    pub provider: String,
+    pub model: String,
+    pub request_started: f64,
 }
