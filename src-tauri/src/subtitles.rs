@@ -427,7 +427,10 @@ pub fn translation_result(value: &serde_json::Value, source: &[Cue]) -> Result<V
         let text = v["text"]
             .as_str()
             .ok_or_else(|| anyhow::anyhow!("invalid_segments"))?;
-        let text = plain_text(text);
+        // Musical-note delimiters describe singing, not dialogue. Providers
+        // commonly copy them from ASS captions despite the plain-text contract.
+        // Remove only these known delimiters; never discard foreign letters.
+        let text = plain_text(&text.replace(['♪', '♫', '♬', '♩'], ""));
         ensure!(
             has_visible_text(&text) && map.insert(id, text).is_none(),
             "invalid_segments"

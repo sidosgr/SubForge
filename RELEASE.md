@@ -1,33 +1,29 @@
-# SubForge 0.1.11
+# SubForge 0.1.12
 
 Sidos - info@sidos.gr
 
 ## English
 
-- Saving settings now shows a persistent, visible confirmation, including after saving a provider.
-- Info icons explain settings and provider options on hover or keyboard focus. Explanations are available in English and Greek, with English fallback for other interface languages.
-- Translation prompts require the selected target language and its native writing system. Per-cue character checks reject stray foreign scripts, emoji, pictograms and replacement characters before checkpoints or final subtitles are saved. Existing cached parts are revalidated.
-- Healthy translation and speech requests have no scheduled pauses, including with older profiles. The former minimum-pause and provider-delay controls have been removed.
-- HTTP 429 and recognized agent quota errors immediately try another eligible enabled provider. If every route is limited, short adaptive backoffs start at one second. Server-requested retry times are retained; temporary learned spacing clears as requests succeed.
-- Parallel translation parts retain independent checkpoints, cue order and timestamps. Pause, resume, retry, cancellation and live file logs remain available.
+Fixes subtitle creation failing after 0.1.11 rejected mixed-script provider replies and copied music-note markers.
 
-Also includes the changes since the public 0.1.6 source: OpenAI (ChatGPT) sign-in and account model selection, verified GitHub app updates, browser-launch and streamed-response fixes, stronger language validation, and plain subtitle formatting without embedded font sizes.
+- Valid lines are kept while only rejected lines are repaired. The repair request edits the translated text itself, rather than repeating the original source dialogue.
+- Known music-note delimiters are removed while lyrics, cue IDs and timestamps are preserved. Foreign letters, emoji and unknown glyphs still require correction; they are never silently deleted from dialogue.
+- Responses providers receive structured output requests and low-temperature generation when supported. Gateway format compatibility is learned per account/model, retaining validated translation for older gateways.
+- Waiting for a cooldown extended by another parallel part no longer consumes request retries. Actual rate-limit failures still use configured retry limits and eligible enabled fallback providers.
+- OpenAI stream failures retain bounded error codes for diagnosis; rate-limit events enter the shared cooldown/fallback path.
 
-Validation: 69 Rust tests passed (two interactive/live-account tests skipped), 16 browser scenarios and 9 isolated native desktop checks passed. Frontend compilation and all ten language resource checks passed. Tests use synthetic fixtures; they do not establish live provider quotas or translation accuracy for every language. A clean-machine installation/upgrade was not exercised for this release.
+Validation: 72 Rust tests and five isolated native regression scenarios passed. Full local-file translation and timing checks passed, along with an opt-in synthetic OAuth translation. Two interactive/live-account tests are skipped in unattended CI.
 
-Download SubForge-Setup-x64.exe and verify it using SHA256SUMS.txt. The installer is unsigned. The existing bundled FFmpeg corresponding-source packaging limitation is recorded in BUILD_REPORT.md and the third-party notices; no new licensing clearance is claimed by this release.
+The installer is unsigned. The existing bundled FFmpeg corresponding-source packaging limitation remains documented in BUILD_REPORT.md and the third-party notices.
 
 ## Ελληνικά
 
-- Η αποθήκευση ρυθμίσεων εμφανίζει σταθερή, ορατή επιβεβαίωση, ακόμη και μετά την αποθήκευση παρόχου.
-- Εικονίδια πληροφοριών εξηγούν τις ρυθμίσεις με κατάδειξη ή εστίαση πληκτρολογίου. Υπάρχουν ελληνικές και αγγλικές εξηγήσεις, με αγγλική εφεδρεία για τις υπόλοιπες γλώσσες διεπαφής.
-- Οι οδηγίες μετάφρασης απαιτούν τη γλώσσα στόχου και τη φυσική γραφή της. Έλεγχοι ανά υπότιτλο απορρίπτουν ξένες γραφές, emoji, εικονίδια και χαρακτήρες αντικατάστασης πριν από την αποθήκευση. Επανελέγχονται και τα αποθηκευμένα τμήματα.
-- Τα επιτυχή αιτήματα μετάφρασης και αναγνώρισης δεν έχουν προγραμματισμένες παύσεις, ακόμη και με παλαιότερα προφίλ. Αφαιρέθηκαν οι ρυθμίσεις σταθερής παύσης.
-- Τα HTTP 429 και τα αναγνωρισμένα όρια πρακτόρων ενεργοποιούν αμέσως άλλον διαθέσιμο ενεργό πάροχο. Αν όλοι έχουν όριο, οι προσαρμοστικές αναμονές ξεκινούν από ένα δευτερόλεπτο. Τηρούνται οι χρόνοι που ζητά ο διακομιστής.
-- Τα παράλληλα τμήματα κρατούν ανεξάρτητα σημεία επαναφοράς, σειρά και χρόνους. Διατηρούνται παύση, συνέχιση, επανάληψη, ακύρωση και ζωντανές καταγραφές.
+Διορθώνεται η αποτυχία δημιουργίας υποτίτλων μετά την 0.1.11, όταν απαντήσεις παρόχων περιείχαν ανάμεικτες γραφές ή αντιγραμμένα σύμβολα μουσικής.
 
-Περιλαμβάνονται επίσης οι αλλαγές μετά τη δημόσια 0.1.6: σύνδεση OpenAI (ChatGPT), επιλογή μοντέλων λογαριασμού, επαληθευμένες ενημερώσεις GitHub, διορθώσεις σύνδεσης και απαντήσεων ροής, αυστηρότεροι έλεγχοι γλώσσας και καθαροί υπότιτλοι χωρίς ενσωματωμένα μεγέθη γραμματοσειρών.
+- Διατηρούνται οι έγκυρες γραμμές και διορθώνονται μόνο οι απορριφθείσες. Η διόρθωση επεξεργάζεται το μεταφρασμένο κείμενο αντί να επαναλαμβάνει το αρχικό.
+- Αφαιρούνται γνωστά μουσικά σύμβολα χωρίς απώλεια στίχων, αναγνωριστικών ή χρόνων. Οι ξένοι χαρακτήρες και τα άγνωστα εικονίδια εξακολουθούν να απαιτούν διόρθωση.
+- Οι πάροχοι Responses χρησιμοποιούν δομημένες απαντήσεις και χαμηλή τυχαιότητα όπου υποστηρίζονται, με αυτόματη προσαρμογή σε παλαιότερες συμβατές πύλες.
+- Η αναμονή κοινού ορίου από παράλληλα τμήματα δεν εξαντλεί τις προσπάθειες αιτημάτων. Διατηρούνται οι ρυθμισμένες επαναλήψεις και οι ενεργοί εναλλακτικοί πάροχοι.
+- Τα σφάλματα ροής OpenAI εμφανίζουν ασφαλείς κωδικούς για διάγνωση και αναγνωρίζονται τα όρια αιτημάτων.
 
-Πέρασαν 69 δοκιμές Rust, 16 σενάρια περιηγητή, 9 απομονωμένοι έλεγχοι εφαρμογής, μεταγλώττιση και οι δέκα γλώσσες. Παραλείφθηκαν δύο διαδραστικές δοκιμές/δοκιμές πραγματικού λογαριασμού. Οι δοκιμές δεν εγγυώνται όρια πραγματικών παρόχων ή ακρίβεια κάθε γλώσσας. Δεν έγινε δοκιμή εγκατάστασης/αναβάθμισης σε καθαρό υπολογιστή για αυτή την έκδοση.
-
-Κατεβάστε το SubForge-Setup-x64.exe και ελέγξτε το με το SHA256SUMS.txt. Ο εγκαταστάτης δεν έχει ψηφιακή υπογραφή. Η υφιστάμενη εκκρεμότητα αντίστοιχου πηγαίου κώδικα FFmpeg καταγράφεται στο BUILD_REPORT.md και στις ειδοποιήσεις τρίτων.
+Ο εγκαταστάτης δεν έχει ψηφιακή υπογραφή. Η υφιστάμενη εκκρεμότητα αντίστοιχου πηγαίου κώδικα FFmpeg παραμένει καταγεγραμμένη στο BUILD_REPORT.md και στις ειδοποιήσεις τρίτων.

@@ -94,6 +94,9 @@ entries include the preceding stage, part/batch context and elapsed time.
 Detailed offline help is available inside the app in all ten interface/subtitle
 languages. Its source is `scripts/build-help.mjs`; generated pages are in `public/help`.
 
+
+Valid translated lines are retained while only rejected lines are corrected. Repairs operate on the rejected translation itself, and known musical-note delimiters are removed without discarding lyrics. Concurrent parts can wait through shared rate-limit cooldown extensions without losing their own request retries.
+
 ## Providers
 
 Speech: Groq, Cloudflare Workers AI, Gemini, Deepgram, Speechmatics and custom

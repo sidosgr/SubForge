@@ -731,6 +731,7 @@ impl ReplyStream {
             Some("response.failed" | "response.incomplete" | "error") => {
                 let code = value["response"]["error"]["code"]
                     .as_str()
+                    .or_else(|| value["error"]["code"].as_str())
                     .or_else(|| value["code"].as_str())
                     .unwrap_or("");
                 if matches!(
@@ -739,6 +740,12 @@ impl ReplyStream {
                         | "subscription_sharing_usage_unavailable"
                 ) {
                     bail!("openai_plan_limit");
+                }
+                if matches!(code, "rate_limit_exceeded" | "insufficient_quota") {
+                    bail!("http_429:0");
+                }
+                if !code.is_empty() && code.len() <= 80 && code.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-') {
+                    bail!("openai_response_failed:{code}");
                 }
                 bail!("openai_response_failed");
             }
@@ -790,6 +797,15 @@ async fn response_text(response: reqwest::Response, control: &Control) -> Result
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn stream_errors_keep_safe_codes_and_classify_rate_limits() {
+        for (code, expected) in [("model_not_found", "openai_response_failed:model_not_found"), ("rate_limit_exceeded", "http_429:0")] {
+            let event = format!("data: {}", json!({"type":"response.failed","response":{"error":{"code":code,"message":"private request details"}}}));
+            let error = ReplyStream::default().event(&event).unwrap_err().to_string();
+            assert_eq!(error, expected);
+            assert!(!error.contains("private"));
+        }
+    }
     use super::*;
     #[tokio::test]
     #[ignore = "uses the saved SubForge OAuth account for one synthetic subtitle translation"]

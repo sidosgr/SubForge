@@ -1,5 +1,13 @@
 ### Version 0.1.11 — 25 October 2026
 
+## Version 0.1.12 — 25 October 2026
+
+Fixes repeated subtitle failures introduced by strict script validation. API translation now retains valid lines and sends only rejected translated text for native-script correction. Structured Responses output/temperature compatibility is learned per account/model. Known music-note delimiters are removed without deleting lyrics; foreign letters and unknown glyphs still fail validation. Parallel parts waiting on a peer's extended account cooldown no longer spend their own request retry budget. OpenAI stream failures report bounded safe error codes and classify rate-limit events.
+
+Validation: 72 unattended Rust tests passed; two interactive/live-account tests remain opt-in. Five isolated native HTTP-fixture checks cover partial repair, preserved lyrics/IDs/timing, bounded fallback after failed repairs, old gateway compatibility, missing language-label handling, and shared cooldown extensions. The configured OAuth provider also passed the opt-in synthetic translation test. Two previously failing full-length local videos completed through the corrected translation path, with all cue counts/timestamps checked and outputs validated before delivery. User media, prompts, returned dialogue, credentials and diagnostic files are excluded from the source publication.
+
+The installer/package and release smoke checks use the production identifier and protect the original app profile. Historical verification and existing media-source packaging limitations remain below.
+
 Adds persistent save feedback and setting/provider explanations on hover or keyboard focus. Removes healthy-request delays, including the delays stored in legacy profiles, and uses short adaptive rate-limit backoffs with immediate fallback to another eligible enabled provider. Server Retry-After seconds remain authoritative. Strict per-cue character validation rejects foreign scripts and icons in new translations and cached results. Translation checkpoint protocol advances to 4.
 
 Validation before release packaging: 69 Rust tests passed, two interactive/live-account tests skipped, 16 browser scenarios and 9 isolated desktop checks passed. Frontend build and all ten language resource checks passed. Desktop fixtures verified concurrency, out-of-order replies, ordered IDs/timestamps, pause/cancel, checkpoint reuse, real HTTP 429/Retry-After fallback and live logs. These checks do not prove live provider quotas or universal language accuracy.
