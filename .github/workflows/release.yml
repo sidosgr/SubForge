@@ -6,6 +6,7 @@ on:
     paths:
       - src-tauri/tauri.conf.json
       - .github/workflows/release.yml
+      - scripts/build.ps1
   workflow_dispatch:
 
 permissions:

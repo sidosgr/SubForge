@@ -11,6 +11,10 @@ node scripts/build-help.mjs
 if ($LASTEXITCODE) { throw 'Help generation failed' }
 node scripts/check-resources.mjs
 if ($LASTEXITCODE) { throw 'Localization checks failed' }
+# Tauri's generate_context! embeds frontendDist even in Rust test builds.
+# A fresh checkout has no dist directory until the frontend is compiled.
+npm run build
+if ($LASTEXITCODE) { throw 'Frontend build failed' }
 if (-not $SkipTests) {
   cargo test --manifest-path src-tauri/Cargo.toml --locked
   if ($LASTEXITCODE) { throw 'Rust tests failed' }
