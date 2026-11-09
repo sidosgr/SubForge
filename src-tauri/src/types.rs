@@ -170,7 +170,6 @@ impl Default for Settings {
                     auth: "oauth".into(),
                     ..route("openai_oauth", "OpenAI (ChatGPT)", "", "", "plan")
                 },
-                route("zen", "OpenCode Zen (CLI)", "", "", "unknown"),
                 route(
                     "openrouter",
                     "OpenRouter",
@@ -195,6 +194,11 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    pub fn remove_retired_providers(&mut self) -> bool {
+        let count = self.translation.len();
+        self.translation.retain(|provider| !matches!(provider.kind.as_str(), "opencode_console" | "zen"));
+        self.translation.len() != count
+    }
     pub fn validate(&self) -> anyhow::Result<()> {
         anyhow::ensure!((1..=8).contains(&self.parallel_files), "parallel_limit");
         anyhow::ensure!(
@@ -296,8 +300,7 @@ impl Settings {
             anyhow::ensure!(
                 matches!(
                     p.kind.as_str(),
-                    "zen"
-                        | "openai_oauth"
+                    "openai_oauth"
                         | "openrouter"
                         | "opencode"
                         | "antigravity"

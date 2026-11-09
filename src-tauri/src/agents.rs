@@ -24,26 +24,18 @@ struct Runtime {
     archive: bool,
 }
 fn runtime(kind: &str) -> Result<Runtime> {
-    let kind = runtime_kind(kind);
     Ok(match kind {
         "antigravity" => Runtime { version:"1.3.3", url:"https://storage.googleapis.com/antigravity-public/antigravity-cli/1.3.3-5524738307653632/windows-x64/cli_windows_x64.exe", hash:"ec15855bd5de768232c0aee31d11eac636a9e7d8bc4ad3dbe3887a9797f7fd821cafabba61482cd5515674a05246be2b7f96ca3f17e38c6a3f7431a2a3aff81f", binary:"agy.exe", archive:false },
-        "opencode" => Runtime { version:"1.19.0", url:"https://github.com/anomalyco/opencode/releases/download/v1.19.0/opencode-windows-x64-baseline.zip", hash:"2759ca3449fe946d82da3be43d2e85332127399686aafceaff153b90c3079c56", binary:"opencode.exe", archive:true },
+        "opencode" => Runtime { version:"2.2.6", url:"https://github.com/anomalyco/opencode/releases/download/v2.2.6/opencode-windows-x64-baseline.zip", hash:"2f7e5e799b6c4937e4f725b69005a051e818a20132e3481ce69b412ed16183b0", binary:"opencode.exe", archive:true },
         "pi" => Runtime { version:"1.1.0", url:"https://github.com/earendil-works/pi/releases/download/v1.1.0/pi-windows-x64.zip", hash:"98e3a14e13685a4836a10865bd7887bdc2fcfa1086120313420dc935a401d3d6", binary:"pi.exe", archive:true },
         _ => bail!("unsupported_agent"),
     })
-}
-fn runtime_kind(kind: &str) -> &str {
-    if kind == "zen" {
-        "opencode"
-    } else {
-        kind
-    }
 }
 pub fn binary(dir: &Path, kind: &str) -> Result<PathBuf> {
     let r = runtime(kind)?;
     Ok(dir
         .join("agents/runtimes")
-        .join(runtime_kind(kind))
+        .join(kind)
         .join(r.version)
         .join(r.binary))
 }
@@ -126,7 +118,13 @@ pub fn profile(dir: &Path, p: &Provider) -> PathBuf {
     dir.join("agents/profiles")
         .join(&p.kind)
         .join(hex::encode(Sha256::digest(p.id.as_bytes())))
-        .join(if p.auth == "oauth" { "oauth" } else { "key" })
+        .join(if p.kind == "opencode" {
+            "cli-v2"
+        } else if p.auth == "oauth" {
+            "oauth"
+        } else {
+            "key"
+        })
 }
 pub fn command(dir: &Path, p: &Provider) -> Result<tokio::process::Command> {
     let exe = binary(dir, &p.kind)?;
@@ -151,7 +149,7 @@ pub fn command(dir: &Path, p: &Provider) -> Result<tokio::process::Command> {
                 cmd.env_remove("GOOGLE_GEMINI_BASE_URL");
             }
         }
-        "opencode" | "zen" => {
+        "opencode" => {
             cmd.env("XDG_CONFIG_HOME", home.join("config"))
                 .env("XDG_DATA_HOME", home.join("data"))
                 .env("XDG_CACHE_HOME", home.join("cache"))
@@ -161,18 +159,11 @@ pub fn command(dir: &Path, p: &Provider) -> Result<tokio::process::Command> {
                 .env_remove("OPENCODE_PERMISSION")
                 .env_remove("OPENCODE_API_KEY")
                 .current_dir(&home);
-            // Zen free models require the normal CLI tool schemas. `run --no-auto`
-            // auto-rejects every permission request; blanket deny removes schemas
-            // and makes the service reject even official CLI requests with 403.
-            let mut config =
-                serde_json::json!({"permission":"ask","autoupdate":false,"share":"disabled"});
-            if let Ok(token) = providers::key(&p.id) {
-                cmd.env("OPENCODE_API_KEY", token);
-                // Resolve the saved key only inside the child. No key is persisted.
-                config["provider"] =
-                    serde_json::json!({"opencode":{"options":{"apiKey":"{env:OPENCODE_API_KEY}"}}});
-            }
-            cmd.env("OPENCODE_CONFIG_CONTENT", serde_json::to_string(&config)?);
+            cmd.arg("--standalone")
+                .env("XDG_STATE_HOME", home.join("state"))
+                .env_remove("OPENCODE_DB")
+                .env_remove("OPENROUTER_API_KEY")
+                .env("OPENCODE_CONFIG_CONTENT", r#"{"permission":"ask","autoupdate":false,"share":"disabled"}"#);
         }
         "pi" => {
             cmd.env("PI_CODING_AGENT_DIR", &home);
@@ -181,6 +172,20 @@ pub fn command(dir: &Path, p: &Provider) -> Result<tokio::process::Command> {
     }
     Ok(cmd)
 }
+pub fn opencode_login(engine: &Engine, p: &Provider) -> Result<()> {
+    ensure!(p.kind == "opencode", "unsupported_agent");
+    let mut cmd = command(&engine.dir, p)?;
+    #[cfg(windows)]
+    cmd.creation_flags(0x00000010); // CREATE_NEW_CONSOLE
+    cmd.args(["auth", "login"]);
+    if p.models.first().and_then(|model| model.split_once('/')).is_none_or(|(provider, _)| provider == "opencode") {
+        cmd.args(["opencode", "--method", "device"]);
+    }
+    cmd.spawn()
+        .map_err(|_| anyhow::anyhow!("opencode_login_launch_failed"))?;
+    Ok(())
+}
+
 fn configure_antigravity(home: &Path, p: &Provider) -> Result<()> {
     let path = home.join(".gemini/antigravity-cli/settings.json");
     fs::create_dir_all(path.parent().unwrap())?;
@@ -676,18 +681,6 @@ mod tests {
         assert_eq!(saved["setupCompleted"], true);
         assert!(saved.get("modelProvider").is_none());
         fs::remove_dir_all(home).unwrap();
-    }
-    #[test]
-    fn zen_reuses_the_managed_opencode_runtime() {
-        let dir = Path::new(r"E:\SubForge");
-        assert_eq!(
-            binary(dir, "zen").unwrap(),
-            binary(dir, "opencode").unwrap()
-        );
-        assert_eq!(
-            runtime("zen").unwrap().hash,
-            runtime("opencode").unwrap().hash
-        );
     }
     #[test]
     fn imported_id_cannot_escape_profile() {

@@ -164,6 +164,7 @@ impl Engine {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
+        let mut migrated = settings.remove_retired_providers();
         for p in settings
             .translation
             .iter_mut()
@@ -184,6 +185,7 @@ impl Engine {
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
         for j in &mut jobs {
+            migrated |= j.config.remove_retired_providers();
             if !matches!(
                 j.status.as_str(),
                 "completed" | "skipped" | "failed" | "canceled"
@@ -211,6 +213,9 @@ impl Engine {
             save_lock: Mutex::new(()),
             log_lock: Mutex::new(()),
         });
+        if migrated {
+            engine.save();
+        }
         engine.cleanup();
         Ok(engine)
     }
@@ -285,7 +290,7 @@ impl Engine {
         let cli = settings
             .translation
             .iter()
-            .filter(|p| matches!(p.kind.as_str(), "zen" | "opencode" | "pi" | "antigravity"))
+            .filter(|p| matches!(p.kind.as_str(), "opencode" | "pi" | "antigravity"))
             .map(|p| (p.id.clone(), crate::agents::ready(&self.dir, &p.kind)))
             .collect();
         Snapshot {
@@ -300,6 +305,16 @@ impl Engine {
     }
     pub fn emit(&self) {
         let _ = self.app.emit("changed", ());
+    }
+    pub fn save_settings(&self, settings: Settings) -> Result<()> {
+        let _guard = self.save_lock.lock().unwrap();
+        let mut current = self.settings.lock().unwrap();
+        atomic(
+            &self.dir.join("settings.json"),
+            &serde_json::to_vec_pretty(&settings)?,
+        )?;
+        *current = settings;
+        Ok(())
     }
     pub fn save(&self) {
         let _guard = self.save_lock.lock().unwrap();
@@ -597,8 +612,10 @@ impl Engine {
         tauri::async_runtime::spawn(async move {
             loop {
                 if engine.running.load(Ordering::SeqCst) {
-                    let limit = engine.settings.lock().unwrap().parallel_files;
-                    let available = limit.saturating_sub(engine.active.lock().unwrap().len());
+                    let settings = engine.settings.lock().unwrap().clone();
+                    let available = settings
+                        .parallel_files
+                        .saturating_sub(engine.active.lock().unwrap().len());
                     let pending: Vec<_> = engine
                         .jobs
                         .lock()
@@ -609,7 +626,7 @@ impl Engine {
                         .take(available)
                         .cloned()
                         .collect();
-                    for job in pending {
+                    for mut job in pending {
                         {
                             let mut active = engine.active.lock().unwrap();
                             if engine.maintenance.load(Ordering::SeqCst) {
@@ -617,6 +634,10 @@ impl Engine {
                             }
                             active.insert(job.id.clone());
                         }
+                        // A queued job may predate provider edits or an app restart.
+                        job.config.speech.clone_from(&settings.speech);
+                        job.config.translation.clone_from(&settings.translation);
+                        job.config.allow_paid = settings.allow_paid;
                         if let Some(j) = engine
                             .jobs
                             .lock()
@@ -624,6 +645,7 @@ impl Engine {
                             .iter_mut()
                             .find(|j| j.id == job.id)
                         {
+                            j.config.clone_from(&job.config);
                             j.attempt += 1;
                             j.started_at = now_seconds();
                         }

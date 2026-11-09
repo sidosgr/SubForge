@@ -14,7 +14,7 @@ res.statusCode=404;res.end('{}');});await new Promise(resolve=>server.listen(924
 try{
  const initial=await invoke('snapshot');const antigravity=initial.settings.translation.find(p=>p.kind==='antigravity');assert.equal(antigravity.auth,'oauth');assert(antigravity.models.length);pass('Antigravity defaults to Google sign-in and a real model slug');
  let settings={...initial.settings,shell_enabled:false,translation:[base]};await invoke('save_settings',{settings});
- await page.locator('[data-page="settings"]').click();await page.locator('[data-edit="translation:0"]').click();
+ await page.locator('[data-page="settings"]').click();await page.locator('[data-settings-tab="aiProviders"]').click();await page.locator('[data-edit="translation:0"]').click();
  assert.equal(await page.locator('[data-provider-field="account_id"]').count(),0);assert.equal(await page.locator('[data-provider-field="cli_path"]').count(),0);pass('Gemini editor hides Cloudflare ID and executable fields');
  await page.locator('#provider-key').fill(secret);await page.locator('#provider-form button[type="submit"]').click();await page.waitForFunction(()=>!document.querySelector('#modal').open);
  await page.locator('[data-edit="translation:0"]').click();assert.equal(await page.locator('#provider-key').inputValue(),'••••••••••••');assert.equal(await page.locator('#provider-key').getAttribute('type'),'password');assert.equal(await invoke('key_saved',{id}),true);pass('Saved credential field is visibly filled and masked');
@@ -29,6 +29,11 @@ try{
   const provider={...base,id:'subforge-011-managed-'+kind,name:kind,kind,endpoint:'',models:kind==='antigravity'?['gemini-3.8-flash-low']:[],auth:'key'};ownedKeys.push(provider.id);
   await invoke('save_key',{id:provider.id,value:'synthetic-subforge-invalid-key'});
   const result=await invoke('prepare_agent',{provider});assert.equal(result,'agent_ready');
+  if(kind==='opencode'){
+   await assert.rejects(()=>invoke('provider_models',{provider}),/opencode_cli_signin_required/);
+   pass('OpenCode CLI provisions its verified runtime and requires OAuth before model discovery');
+   continue;
+  }
   const models=await invoke('provider_models',{provider});assert(models.length>0,kind+' catalog empty');pass(`${kind}: automatic verified runtime provisioning and background model discovery`,`${models.length} models`);
   if(kind==='antigravity'){
    const profileRoot=path.resolve('.tools/provider-test-data/agents/profiles/antigravity');const profileId=createHash('sha256').update(provider.id).digest('hex');const config=fs.readFileSync(path.join(profileRoot,profileId,'key/.gemini/antigravity-cli/settings.json'),'utf8');assert.equal(JSON.parse(config).modelProvider,'gemini');assert(!config.includes('synthetic-subforge-invalid-key'));pass('Antigravity key mode automatically configures its private profile without persisting keys');

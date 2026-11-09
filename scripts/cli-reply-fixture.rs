@@ -5,9 +5,13 @@ use std::{env,fs,io::Write,path::PathBuf};
 extern "system" {fn GetConsoleWindow()->*mut std::ffi::c_void;}
 fn main(){
  let args:Vec<String>=env::args().skip(1).collect();let root=PathBuf::from(env::var("SUBFORGE_DATA_DIR").unwrap());
+ if args.starts_with(&["--standalone".into(), "auth".into(), "list".into()]){
+  println!("{}",json!([{"id":"opencode","connections":[{"type":"credential","method":"oauth"}]}]));
+  return;
+ }
  if let Ok(delay)=fs::read_to_string(root.join("reply-delay-ms.txt")){std::thread::sleep(std::time::Duration::from_millis(delay.trim().parse().unwrap()));}
- let (kind,prompt)=if args.first().is_some_and(|a|a=="run"){
-  assert!(args.windows(2).any(|a|a==["--agent","subforge-translator"]));assert!(args.iter().any(|a|a=="--pure"));assert!(args.iter().any(|a|a=="--no-auto"));
+ let (kind,prompt)=if args.starts_with(&["--standalone".into(), "run".into()]){
+  assert!(args.iter().any(|a|a=="--archived"));assert!(!args.iter().any(|a|a=="--auto"));
   let file=args.windows(2).find(|a|a[0]=="--file").unwrap();("opencode",fs::read_to_string(&file[1]).unwrap())
  }else if let Some(index)=args.iter().position(|a|a=="-p"){
   let schema=args.windows(2).find(|a|a[0]=="--json-schema").unwrap();let value:Value=serde_json::from_str(&schema[1]).unwrap();assert!(value["required"].as_array().unwrap().contains(&json!("segments")));

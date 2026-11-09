@@ -11,7 +11,7 @@ try{
  if(await page.locator('#modal').evaluate(el=>el.open))await page.locator('#modal-close').click();
  await invoke('save_settings',{settings:{...previous,shell_enabled:false,translation:[p],ui_language:'en'}});
  await copyRuntime(path.join(root,'signin-fixture.exe'));fs.writeFileSync(path.join(root,'signin-fixture.log'),'');
- await page.locator('[data-page="settings"]').click();await page.locator('[data-edit="translation:0"]').click();await page.locator('#agent-signin').click();
+ await page.locator('[data-page="settings"]').click();await page.locator('[data-settings-tab="aiProviders"]').click();await page.locator('[data-edit="translation:0"]').click();await page.locator('#agent-signin').click();
  await page.waitForFunction(()=>document.querySelector('#signin-hint')?.textContent.includes('Interaction sharing is off'));
  let log=fs.readFileSync(path.join(root,'signin-fixture.log'),'utf8');assert.match(log,/terminal-initialized/);assert.match(log,/theme-selected/);assert.match(log,/sharing-disabled/);assert(!log.includes('explicit-setup-confirmation'));pass('Hidden sign-in answers terminal initialization, advances theme setup, and switches interaction sharing off');
  await new Promise(r=>setTimeout(r,1500));assert(!fs.readFileSync(path.join(root,'signin-fixture.log'),'utf8').includes('explicit-setup-confirmation'));assert.equal(await page.locator('#signin-legal').isVisible(),true);pass('Setup pauses for explicit user confirmation with provider terms and privacy controls');

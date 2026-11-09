@@ -257,7 +257,7 @@ Required connections:
 
 | Connection | Configuration |
 | --- | --- |
-| OpenCode CLI / OpenCode Zen | CLI detection/setup, API key where required, explicit provider/model selection |
+| OpenCode CLI | Managed CLI setup, terminal OAuth, explicit provider/model selection |
 | OpenRouter | API key, model selection, compatible direct API or supported agent route |
 | Google Antigravity CLI | Supported Google sign-in/OAuth or Gemini API-key mode |
 | Pi agent | CLI detection/setup, supported authentication, provider/model selection |
@@ -265,20 +265,20 @@ Required connections:
 
 ### Separate tools from services
 
-OpenCode, Antigravity, and Pi are agent runtimes. Zen, OpenRouter, and cloud model endpoints are services. Model availability, billing, and audio support belong to the actual selected route.
+OpenCode, Antigravity, and Pi are agent runtimes. OpenRouter, and cloud model endpoints are services. Model availability, billing, and audio support belong to the actual selected route.
 
 The settings model should represent both the runtime/transport and the underlying provider/model. Do not assume installing a free CLI makes every model free or provides speech recognition.
 
 ### Integration behavior
 
 - Use documented noninteractive, JSON/event-stream, RPC, or API modes where available.
-- Antigravity, OpenCode/Zen and Pi translation must invoke their CLI executables. Direct API translation must reject every agent kind before credentials or network access. Validate separate completed answers; bound batches by cue count and text length, and split malformed or incomplete replies while preserving IDs and timestamps. Use native Antigravity JSON-schema output.
+- Antigravity, OpenCode CLI and Pi translation must invoke their CLI executables. Direct API translation must reject every agent kind before credentials or network access. Validate separate completed answers; bound batches by cue count and text length, and split malformed or incomplete replies while preserving IDs and timestamps. Use native Antigravity JSON-schema output.
 - Show cached native Google sessions explicitly. Offer an explicit account-switch action through the native logout command, with notice that it signs out the CLI account on this PC. Preserve native setup preferences, pace menu navigation, and open validated CLI OAuth links through the Windows default-browser association, including links embedded in terminal hyperlinks.
 - Test supported versions and parse structured progress/results.
 - Avoid showing terminal windows during normal processing.
 - Use browser/interactive authentication only when required for setup.
 - Hidden Antigravity sign-in must answer terminal initialization queries, advance appearance setup, show Google's terms and privacy controls, disable optional interaction sharing, and wait for explicit user confirmation before finishing setup. Poll sign-in progress; offer browser retry only for a validated Google OAuth URL. Closing the helper must not claim that provider access was verified.
-- OpenCode Zen must use the managed OpenCode CLI for translation, connection checks and model refresh; never call Zen directly or fall back to its HTTP API. Retain existing Zen settings and credential IDs. Accept bare Zen model IDs or `opencode/<model-id>` and preserve user order.
+- OpenCode CLI opens its terminal sign-in when added and uses the active OAuth connection for model discovery, connection tests and translation.
 - Keep the official OpenCode tool schemas available with ask permissions and launch translation with `--no-auto`, so CLI permission requests are automatically rejected while free-tier routing remains compatible.
 - SubForge must automatically provision verified official agent runtimes and run automation in the background using saved settings. Users must not enter executable paths or edit CLI settings files.
 - Keep app-managed runtimes and profiles separate from existing installations; do not silently change global agent settings.
@@ -534,7 +534,7 @@ Mocks may verify failure handling; they do not prove a real provider integration
 - [ ] The app does not upload audio when local cloud fallback is disabled.
 - [ ] Groq, Cloudflare, Gemini, Deepgram, and Speechmatics adapters are present and their verification status is recorded.
 - [ ] Azure Speech and Google Translate are absent.
-- [ ] OpenCode/Zen, OpenRouter, Antigravity, Pi, and custom translation routes support the agreed configuration.
+- [ ] OpenCode CLI, OpenRouter, Antigravity, Pi, and custom translation routes support the agreed configuration.
 - [ ] Provider/model selection is explicit and its order is respected.
 - [ ] Text-only routes are excluded from audio transcription.
 - [ ] Exhausted free routes never silently select paid usage.
@@ -587,7 +587,6 @@ The following official/project sources informed planning. Recheck capabilities, 
 - [whisper.cpp, model sizes, CPU/GPU support, and bindings](https://github.com/ggml-org/whisper.cpp)
 - [Whisper languages and transcription/translation behavior](https://github.com/openai/whisper)
 - [OpenCode CLI](https://opencode.ai/docs/cli/)
-- [OpenCode Zen](https://docs.opencode.ai/docs/zen/)
 - [OpenRouter free model variants](https://openrouter.ai/docs/guides/routing/model-variants/free)
 - [Pi automation and embedding](https://pi.dev/docs/latest)
 - [Pi custom providers](https://pi.dev/docs/latest/custom-provider)

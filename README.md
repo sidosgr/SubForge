@@ -4,6 +4,8 @@
 
 [English](README.md) · [Ελληνικά](README.el.md)
 
+> **Proof of concept for testing purposes only.** Live provider testing has covered only Google Antigravity as an agent, OpenCode CLI as an agent, OpenRouter, and ChatGPT OAuth. Other integrations are experimental and have no live validation.
+
 **English:** SubForge creates and translates video subtitles on Windows 10/11.
 Right-click a video or folder, reuse existing subtitles or transcribe speech
 locally with Whisper Base/Small, then translate with background AI-agent CLIs.
@@ -24,15 +26,13 @@ TypeScript interface. English is the initial interface language; Greek the subti
 
 ## Use
 
-After building locally, install `artifacts/SubForge-Setup-x64.exe`. In Settings, choose local Whisper
-Base/Small or an online speech provider. Local models are optional downloads;
-Python, Node, Rust and a GPU are not required for normal local operation.
-Configure a translation provider and select its models for subtitles in another
-language. API keys are stored in Windows Credential Manager.
+After building locally, install `artifacts/SubForge-Setup-x64.exe`. Settings has tabs for **General**, **AI Providers**, **Transcription**, **Processing**, **Output**, and **App updates**.
+
+Use **Transcription** to choose local Whisper Base/Small or online speech recognition. Local models are optional downloads. In **AI Providers**, the translation and speech provider lists appear first. Enable the providers you want, choose their models, and move them into priority order. API keys are stored in Windows Credential Manager.
 
 Providers and models run in their displayed order. Paid and unknown-cost routes
 need explicit permission; introductory credits need separate opt-in. Free routing
-also rejects known Zen/OpenRouter paid model identifiers. External account billing
+also rejects known OpenCode CLI/OpenRouter paid model identifiers. External account billing
 settings still apply; use spending limits and disable automatic credit replenishment.
 
 Right-click a supported video/folder and choose **Create subtitles with SubForge**.
@@ -55,7 +55,7 @@ provider. If every route is limited, retries use short adaptive backoffs startin
 at one second, while honoring server-requested retry times. Learned spacing is
 250–2000 ms and clears as successful requests recover.
 
-Saving settings shows a persistent confirmation near the Save button. Setting
+Saving settings shows a confirmation that disappears after five seconds. Setting
 and provider info icons explain each option on hover or keyboard focus (English
 and Greek, with English fallback for other interface languages). Translation
 responses and cached parts are checked for foreign-script characters and icons;
@@ -103,12 +103,12 @@ Speech: Groq, Cloudflare Workers AI, Gemini, Deepgram, Speechmatics and custom
 compatible multipart endpoints. Microsoft Azure Speech and Google Translate are absent.
 Only Whisper Base/Small local transcription models are supported.
 
-Translation: OpenAI (ChatGPT OAuth), OpenCode Zen through the managed CLI, OpenRouter, OpenCode CLI, Antigravity CLI, Pi and
+Translation: OpenAI (ChatGPT OAuth), OpenRouter, OpenCode CLI, Antigravity CLI, Pi and
 custom chat-completions/Responses/Gemini endpoints. Select models explicitly;
 configure credentials, retries, timeout and cooldown per route.
 
 OpenAI (ChatGPT) uses OpenAI’s documented [Sign in with ChatGPT flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in).
-In Settings → Translation, edit OpenAI (ChatGPT), choose **Continue with ChatGPT**,
+In Settings → AI Providers → Translation, edit OpenAI (ChatGPT), choose **Continue with ChatGPT**,
 and authorize plan usage in your browser. Existing profiles can add it with
 **Add provider**. Refresh models, choose an account model, test the connection, save
 and enable the route. Each OpenAI provider keeps its own account/workspace
@@ -139,17 +139,11 @@ SubForge automatically downloads and verifies its own official agent runtimes
 when Set up agent, Refresh models or Test connection is used, or an agent job
 starts. No executable path, command entry, PATH change, Node installation or
 manual CLI settings-file edit is required. Downloads are optional and pinned:
-OpenCode 1.19.0, Antigravity 1.3.3 and Pi 1.1.0. Agent calls run without terminal
+OpenCode CLI 2.2.6, Antigravity 1.3.3 and Pi 1.1.0. Agent calls run without terminal
 windows and use application-owned configuration. API keys are supplied only to
 the child process, never written into its settings.
 
-OpenCode Zen always uses the managed OpenCode CLI for translation, connection tests and model discovery. Existing Zen settings and saved keys are retained. Bare IDs such as `space-bunny-free`, `muse-spark-1.3-contributor-free` and `mimo-v2.6-flash-free` automatically become `opencode/<model-id>` inside the CLI. Model order, retries, cooldown and paid-route gates still apply. Refresh models updates the official CLI catalog. SubForge never falls back to direct Zen API calls.
-
-The official OpenCode tool schemas remain available with ask permissions, while
-`run --no-auto` automatically rejects tool permission requests. Disabling all
-tool schemas caused the free-tier 403 in 0.1.2. All three listed free models
-each translated 40 synthetic cues successfully through the repaired official CLI
-integration in 0.1.4, preserving all cue times.
+In **Settings → AI Providers → Translation**, save a new **OpenCode CLI** provider to open its sign-in terminal. Complete OAuth in the browser, then refresh models, select one, and enable the provider. Use **Authentication** to reopen the terminal for an existing provider. Model discovery and translation use the active OAuth login stored by OpenCode CLI.
 
 Agent translation sends only subtitle text through the selected CLI. Batches are
 bounded to eight cues and 3,000 UTF-8 bytes (a single longer cue stays intact).

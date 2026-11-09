@@ -26,16 +26,18 @@ fn snapshot(state: State<AppState>) -> engine::Snapshot {
     state.snapshot()
 }
 #[tauri::command]
-fn save_settings(state: State<AppState>, settings: Settings) -> CmdResult<()> {
+fn save_settings(state: State<AppState>, mut settings: Settings) -> CmdResult<()> {
+    settings.remove_retired_providers();
     settings.validate().map_err(error)?;
-    engine::atomic(
-        &state.dir.join("settings.json"),
-        &serde_json::to_vec_pretty(&settings).map_err(error)?,
-    )
-    .map_err(error)?;
-    shell(settings.shell_enabled, &settings.ui_language).map_err(error)?;
-    *state.settings.lock().unwrap() = settings;
-    state.save();
+    let shell_changed = {
+        let current = state.settings.lock().unwrap();
+        current.shell_enabled != settings.shell_enabled
+            || (settings.shell_enabled && current.ui_language != settings.ui_language)
+    };
+    if shell_changed {
+        shell(settings.shell_enabled, &settings.ui_language).map_err(error)?;
+    }
+    state.save_settings(settings).map_err(error)?;
     state.emit();
     Ok(())
 }
@@ -55,14 +57,14 @@ fn add_files(state: State<AppState>, paths: Vec<String>) -> CmdResult<usize> {
 }
 #[tauri::command]
 fn start_queue(state: State<AppState>) {
-    state.running.store(true, Ordering::SeqCst);
-    let mut jobs = state.jobs.lock().unwrap();
     let config = state.settings.lock().unwrap().clone();
+    let mut jobs = state.jobs.lock().unwrap();
     for job in jobs.iter_mut().filter(|j| j.status == "queued") {
         job.target = config.target_language.clone();
         job.config = config.clone();
     }
     drop(jobs);
+    state.running.store(true, Ordering::SeqCst);
     state.save();
     state.emit();
 }
@@ -254,6 +256,10 @@ async fn agent_signin(state: State<'_, AppState>, provider: Provider) -> CmdResu
     agents::prepare(&state, &provider.kind, &engine::Control::default())
         .await
         .map_err(error)?;
+    if provider.kind == "opencode" {
+        agents::opencode_login(&state, &provider).map_err(error)?;
+        return Ok("signin_waiting".into());
+    }
     agents::login(&state, &provider).map_err(error)?;
     Ok("signin_waiting".into())
 }
