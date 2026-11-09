@@ -1,29 +1,23 @@
-# SubForge 0.1.12
-
-Sidos - info@sidos.gr
+# SubForge 0.1.13
 
 ## English
 
-Fixes subtitle creation failing after 0.1.11 rejected mixed-script provider replies and copied music-note markers.
+**Proof of concept for testing purposes only.** Live provider testing has covered Google Antigravity as an agent, OpenCode CLI as an agent, OpenRouter, and ChatGPT OAuth.
 
-- Valid lines are kept while only rejected lines are repaired. The repair request edits the translated text itself, rather than repeating the original source dialogue.
-- Known music-note delimiters are removed while lyrics, cue IDs and timestamps are preserved. Foreign letters, emoji and unknown glyphs still require correction; they are never silently deleted from dialogue.
-- Responses providers receive structured output requests and low-temperature generation when supported. Gateway format compatibility is learned per account/model, retaining validated translation for older gateways.
-- Waiting for a cooldown extended by another parallel part no longer consumes request retries. Actual rate-limit failures still use configured retry limits and eligible enabled fallback providers.
-- OpenAI stream failures retain bounded error codes for diagnosis; rate-limit events enter the shared cooldown/fallback path.
+- Settings now has six tabs. The AI Providers tab opens with the translation and speech provider lists.
+- OpenCode Zen and the embedded OpenCode Console route have been removed. Existing settings and queued jobs drop retired routes when loaded.
+- Saving a new OpenCode CLI provider opens the managed CLI v2 login terminal. Model discovery and translation use its active OAuth session.
+- Settings save confirmations disappear after five seconds. Queued and resumed jobs check the current provider list.
 
-Validation: 72 Rust tests and five isolated native regression scenarios passed. Full local-file translation and timing checks passed, along with an opt-in synthetic OAuth translation. Two interactive/live-account tests are skipped in unattended CI.
-
-The installer is unsigned. The existing bundled FFmpeg corresponding-source packaging limitation remains documented in BUILD_REPORT.md and the third-party notices.
+The Windows installer is unsigned. See [the build report](BUILD_REPORT.md) for packaging and validation details.
 
 ## Ελληνικά
 
-Διορθώνεται η αποτυχία δημιουργίας υποτίτλων μετά την 0.1.11, όταν απαντήσεις παρόχων περιείχαν ανάμεικτες γραφές ή αντιγραμμένα σύμβολα μουσικής.
+**Πειραματικό πρωτότυπο αποκλειστικά για δοκιμές.** Δοκιμές με πραγματικούς παρόχους έγιναν με το Google Antigravity ως πράκτορα, το OpenCode CLI ως πράκτορα, το OpenRouter και το ChatGPT μέσω OAuth.
 
-- Διατηρούνται οι έγκυρες γραμμές και διορθώνονται μόνο οι απορριφθείσες. Η διόρθωση επεξεργάζεται το μεταφρασμένο κείμενο αντί να επαναλαμβάνει το αρχικό.
-- Αφαιρούνται γνωστά μουσικά σύμβολα χωρίς απώλεια στίχων, αναγνωριστικών ή χρόνων. Οι ξένοι χαρακτήρες και τα άγνωστα εικονίδια εξακολουθούν να απαιτούν διόρθωση.
-- Οι πάροχοι Responses χρησιμοποιούν δομημένες απαντήσεις και χαμηλή τυχαιότητα όπου υποστηρίζονται, με αυτόματη προσαρμογή σε παλαιότερες συμβατές πύλες.
-- Η αναμονή κοινού ορίου από παράλληλα τμήματα δεν εξαντλεί τις προσπάθειες αιτημάτων. Διατηρούνται οι ρυθμισμένες επαναλήψεις και οι ενεργοί εναλλακτικοί πάροχοι.
-- Τα σφάλματα ροής OpenAI εμφανίζουν ασφαλείς κωδικούς για διάγνωση και αναγνωρίζονται τα όρια αιτημάτων.
+- Οι Ρυθμίσεις έχουν πλέον έξι καρτέλες. Στην καρτέλα **Πάροχοι ΤΝ** εμφανίζονται πρώτα οι λίστες μετάφρασης και απομαγνητοφώνησης.
+- Καταργήθηκαν το OpenCode Zen και η ενσωματωμένη σύνδεση OpenCode Console. Οι καταργημένοι πάροχοι αφαιρούνται κατά τη φόρτωση ρυθμίσεων και εργασιών.
+- Η αποθήκευση νέου παρόχου OpenCode CLI ανοίγει το τερματικό σύνδεσης του διαχειριζόμενου CLI v2. Η εύρεση μοντέλων και η μετάφραση χρησιμοποιούν την ενεργή σύνδεση OAuth.
+- Η επιβεβαίωση αποθήκευσης κλείνει μετά από πέντε δευτερόλεπτα. Οι εργασίες στην ουρά και όσες συνεχίζονται ελέγχουν την τρέχουσα λίστα παρόχων.
 
-Ο εγκαταστάτης δεν έχει ψηφιακή υπογραφή. Η υφιστάμενη εκκρεμότητα αντίστοιχου πηγαίου κώδικα FFmpeg παραμένει καταγεγραμμένη στο BUILD_REPORT.md και στις ειδοποιήσεις τρίτων.
+Ο εγκαταστάτης Windows δεν έχει ψηφιακή υπογραφή. Δείτε την [αναφορά ελέγχων](BUILD_REPORT.md) για λεπτομέρειες.
